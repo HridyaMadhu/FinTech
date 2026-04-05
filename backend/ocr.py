@@ -31,6 +31,29 @@ def extract_from_image(img):
 
     return text, amounts
 
+def extract_details(text, amounts):
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+
+    merchant = lines[0] if lines else "Unknown"
+
+    date_match = re.search(r'\d{2}[/-]\d{2}[/-]\d{2,4}', text)
+    date = date_match.group() if date_match else "Not found"
+
+    if "₹" in text:
+        currency = "INR"
+    elif "$" in text:
+        currency = "USD"
+    elif "CHF" in text:
+        currency = "CHF"
+    elif "EUR" in text:
+        currency = "EUR"
+    else:
+        currency = "Unknown"
+
+    total_amount = amounts[-1] if amounts else "Not found"
+
+    return merchant, date, currency, total_amount
+
 
 def extract_text(file_path):
     ext = os.path.splitext(file_path)[1].lower()
@@ -38,7 +61,6 @@ def extract_text(file_path):
     all_text = ""
     all_amounts = []
 
-    # ✅ IMAGE CASE
     if ext in [".jpg", ".jpeg", ".png"]:
         img = cv2.imread(file_path)
 
@@ -47,7 +69,6 @@ def extract_text(file_path):
         all_text += text
         all_amounts.extend(amounts)
 
-    # ✅ PDF CASE
     elif ext == ".pdf":
         pages = convert_from_path(file_path, poppler_path=POPPLER_PATH)
 
@@ -62,7 +83,12 @@ def extract_text(file_path):
     else:
         return {"error": "Unsupported file format"}
 
+    merchant, date, currency, total_amount = extract_details(all_text, all_amounts)
+
     return {
-        "raw_text": all_text,
-        "amount": all_amounts[-1] if all_amounts else "Not found"
+        "merchant": merchant,
+        "date": date,
+        "currency": currency,
+        "amount": total_amount,
+        "raw_text": all_text
     }
