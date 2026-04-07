@@ -33,6 +33,9 @@ def extract_from_image(img):
     return text, amounts
 
 def detect_merchant(lines):
+    for line in lines:
+        if "account name" in line.lower():
+            return line.split(":")[-1].strip()
     ignore_words = [
         "receipt", "invoice", "bill", "cash receipt",
         "address", "addr", "tel", "phone", "gst", "tax", "details", "business", "table",
@@ -41,51 +44,56 @@ def detect_merchant(lines):
         "description", "bank", "account", "iban", "swift","branch", "sort code"
     ]
 
-    for line in lines:
+    for line in lines[:10]:
         line_lower = line.lower()
 
         if any(word in line_lower for word in ignore_words):
             continue
 
-        if re.search(r'\d+\.\d{2}', line):
-            continue
+        if re.search(r'\d{2}/\d{2}/\d{4}', line):
+            continue  # skip dates
 
-        if len(line.split()) > 6:
-            continue
+        if re.search(r'\d', line):
+            continue  # skip numbers
 
-        if sum(c.isdigit() for c in line) > 2:
-            continue
+        if 3 < len(line) < 40:
+            return line.strip()
 
-        return line
+        
 
     return "Unknown"
 
-def extract_details(text, amounts):
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
+def extract_date(text):
+    patterns = [
+        r'\d{1,2}[A-Z]{3}\d{4}',          
+        r'\d{1,2}\s+[A-Za-z]+\s+\d{4}',   
+        r'\d{2}[/-]\d{2}[/-]\d{4}'        
+    ]
 
-    merchant = detect_merchant(lines)
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group()
 
-    date_match = re.search(r'\d{1,2}\s+[A-Za-z]+\s+\d{4}', text)
-    if not date_match:
-        date_match = re.search(r'\d{2}[/-]\d{2}[/-]\d{4}', text)
-    date = date_match.group() if date_match else "Not found"
+    return "Not found"
 
-    if "₹" in text:
-        currency = "INR"
-    elif "$" in text:
-        currency = "USD"
-    elif "CHF" in text:
-        currency = "CHF"
+def detect_currency(text):
+    if re.search(r'₹\s*\d', text):
+        return "INR"
+    elif re.search(r'\$\s*\d', text):
+        return "USD"
     elif "EUR" in text:
-        currency = "EUR"
+        return "EUR"
+    elif "CHF" in text:
+        return "CHF"
     elif "£" in text:
-        currency = "GBP"
+        return "GBP"
     else:
-        currency = "Unknown"
+        return "Unknown"
 
+def extract_total(text, amounts):
     total_match = re.search(r'(total|amount)\s*[:\-]?\s*(\d+\.\d{2})', text, re.IGNORECASE)
     gross_match = re.search(r'(gross|grand total)\s*[:\-]?\s*(\d+\.\d{2})', text, re.IGNORECASE)
-
     net_match = re.search(r'net total\s*[:\-]?\s*(\d+\.\d{2})', text, re.IGNORECASE)
 
     if total_match:
@@ -95,16 +103,23 @@ def extract_details(text, amounts):
     else:
         total_amount = "Not found"
 
-    
-
     if gross_match:
         total_amount = gross_match.group(2)
     elif net_match:
         total_amount = net_match.group(1)
     elif amounts:
         total_amount = amounts[-1]
-    else:
-        total_amount = "Not found"
+
+    return total_amount
+
+def extract_details(text, amounts):
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+
+    merchant = detect_merchant(lines)
+
+    date = extract_date(text)
+    currency = detect_currency(text)
+    total_amount = extract_total(text, amounts)
 
     return merchant, date, currency, total_amount
     
