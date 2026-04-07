@@ -9,6 +9,10 @@ pytesseract.pytesseract.tesseract_cmd = r"G:\TesseractOCR\tesseract.exe"
 
 POPPLER_PATH = r"G:\poppler-25.12.0\Library\bin"
 
+def is_blurry(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return variance < 100
 
 def preprocess_image(img):
     img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
@@ -134,7 +138,11 @@ def extract_text(file_path):
     if ext in [".jpg", ".jpeg", ".png"]:
         img = cv2.imread(file_path)
 
+        if is_blurry(img):
+            return {"error": "Blurry or unreadable image detected"}
+
         text, amounts = extract_from_image(img)
+        
 
         all_text += text
         all_amounts.extend(amounts)
@@ -144,6 +152,9 @@ def extract_text(file_path):
 
         for page in pages:
             img = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
+
+            if is_blurry(img):
+                return {"error": "Blurry or unreadable PDF page detected"}
 
             text, amounts = extract_from_image(img)
 
