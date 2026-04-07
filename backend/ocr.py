@@ -26,17 +26,48 @@ def extract_from_image(img):
 
     text = pytesseract.image_to_string(img, config='--oem 3 --psm 6')
     text = text.replace(',', '.')
+    
 
     amounts = re.findall(r'\d+\.\d{2}', text)
 
     return text, amounts
 
+def detect_merchant(lines):
+    ignore_words = [
+        "receipt", "invoice", "bill", "cash receipt",
+        "address", "addr", "tel", "phone", "gst", "tax", "details", "business", "table",
+        "server", "guest", "subtotal", "total", "change","thank you", "have a nice day", "welcome",
+        "payment terms", "vat", "invoice no", "purchase id",
+        "description", "bank", "account", "iban", "swift","branch", "sort code"
+    ]
+
+    for line in lines:
+        line_lower = line.lower()
+
+        if any(word in line_lower for word in ignore_words):
+            continue
+
+        if re.search(r'\d+\.\d{2}', line):
+            continue
+
+        if len(line.split()) > 6:
+            continue
+
+        if sum(c.isdigit() for c in line) > 2:
+            continue
+
+        return line
+
+    return "Unknown"
+
 def extract_details(text, amounts):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
 
-    merchant = lines[0] if lines else "Unknown"
+    merchant = detect_merchant(lines)
 
-    date_match = re.search(r'\d{2}[/-]\d{2}[/-]\d{2,4}', text)
+    date_match = re.search(r'\d{1,2}\s+[A-Za-z]+\s+\d{4}', text)
+    if not date_match:
+        date_match = re.search(r'\d{2}[/-]\d{2}[/-]\d{4}', text)
     date = date_match.group() if date_match else "Not found"
 
     if "₹" in text:
@@ -47,12 +78,36 @@ def extract_details(text, amounts):
         currency = "CHF"
     elif "EUR" in text:
         currency = "EUR"
+    elif "£" in text:
+        currency = "GBP"
     else:
         currency = "Unknown"
 
-    total_amount = amounts[-1] if amounts else "Not found"
+    total_match = re.search(r'(total|amount)\s*[:\-]?\s*(\d+\.\d{2})', text, re.IGNORECASE)
+    gross_match = re.search(r'(gross|grand total)\s*[:\-]?\s*(\d+\.\d{2})', text, re.IGNORECASE)
+
+    net_match = re.search(r'net total\s*[:\-]?\s*(\d+\.\d{2})', text, re.IGNORECASE)
+
+    if total_match:
+        total_amount = total_match.group(2)
+    elif amounts:
+        total_amount = amounts[-1]
+    else:
+        total_amount = "Not found"
+
+    
+
+    if gross_match:
+        total_amount = gross_match.group(2)
+    elif net_match:
+        total_amount = net_match.group(1)
+    elif amounts:
+        total_amount = amounts[-1]
+    else:
+        total_amount = "Not found"
 
     return merchant, date, currency, total_amount
+    
 
 
 def extract_text(file_path):
